@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TubeBoost — YouTube statistika</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#14161c;--mu:#6b7280;--ac:#e11d48;--bd:#e5e7eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d24;--tx:#f1f2f5;--mu:#9aa1ad;--bd:#2a2e38}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--tx);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:radial-gradient(900px 520px at 8% -8%,rgba(225,29,72,.30),transparent 60%),radial-gradient(800px 520px at 100% 8%,rgba(99,102,241,.30),transparent 60%),radial-gradient(700px 600px at 50% 112%,rgba(14,165,233,.24),transparent 60%),var(--bg);background-attachment:fixed}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px}
+h1{font-size:20px;margin:0}h1 span{color:var(--ac)}
+#code{width:110px;padding:7px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font-size:13px}
+main{max-width:720px;margin:0 auto;padding:6px 14px 40px}
+.c{background:color-mix(in srgb,var(--card) 80%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 6px 24px rgba(0,0,0,.08)}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.k{background:var(--bg);border-radius:10px;padding:10px}.k b{display:block;font-size:20px}.k small{color:var(--mu)}
+input{width:100%;padding:10px;margin-top:8px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+.b{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;margin-top:10px;width:100%}
+.b.s{background:var(--bg);color:var(--tx);border:1px solid var(--bd);width:auto;padding:7px 11px;font-size:13px;margin:0}
+.b:disabled{opacity:.5}
+.mu{color:var(--mu);font-size:13px}.er{color:var(--ac);margin-top:8px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ch{display:flex;gap:12px;align-items:center}
+.av{width:68px;height:68px;border-radius:50%;overflow:hidden;flex:none;background:linear-gradient(135deg,var(--ac),#6366f1)}.av img{width:100%;height:100%;object-fit:cover}
+</style></head><body>
+<header><h1>Tube<span>Boost</span></h1><input id="code" placeholder="Kirish kodi" autocomplete="off"></header>
+<main id="m"></main>
+<script>
+// 1) Cloudflare Worker manzilingizni shu yerga yozing:
+const API = "https://SIZNING-WORKER.workers.dev";
+
+const $ = s => document.querySelector(s), f = n => Number(n).toLocaleString('ru-RU');
+const ls = {
+  g: k => { try { return JSON.parse(localStorage.getItem(k)) } catch (e) { return null } },
+  s: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} }
+};
+function parse(u) {
+  u = (u || '').trim();
+  if (!(u.includes('youtube.com/') || u[0] === '@')) return null;
+  const i = u.indexOf('youtube.com/'), p = i >= 0 ? u.slice(i + 12) : u;
+  const a = p.split('?')[0].split('#')[0].split('/').filter(Boolean);
+  if (!a.length) return null;
+  let h = null;
+  if (a[0][0] === '@') h = a[0];
+  else if (['channel', 'user'].includes(a[0]) && a[1]) h = a[0] + '/' + a[1];
+  return h && /^[A-Za-z0-9_.@/-]+$/.test(h) ? h : null;
+}
+let timer;
+function home() {
+  clearInterval(timer);
+  const c = ls.g('chan');
+  if (!c) {
+    $('#m').innerHTML = `<div class="c"><b>📺 Kanalingizni ulang</b><div class="mu">YouTube kanal havolasini kiriting (youtube.com/@nom yoki /channel/... ). Kanalni istalgan vaqt almashtirish mumkin.</div><input id="cu" placeholder="https://youtube.com/@kanalnomi"><button class="b" id="cs">Statistikani ko'rsatish</button><div id="ce" class="er"></div></div>`;
+    $('#cs').onclick = () => {
+      const h = parse($('#cu').value);
+      if (!h) { $('#ce').textContent = "Havola noto'g'ri. Masalan: https://youtube.com/@kanalnomi"; return }
+      ls.s('chan', { h, ts: Date.now() }); home();
+    };
+    return;
+  }
+  $('#m').innerHTML = `<div class="c"><div class="ch"><div class="av"><img id="im" alt=""></div><div style="flex:1"><b id="ti" style="font-size:18px">...</b><div class="mu" id="up"></div></div></div><div class="g" id="st"></div><div id="er" class="er"></div></div><div class="c row"><span class="mu">Boshqa kanalni ko'rish uchun almashtiring</span><button class="b s" id="cc">Kanalni almashtirish</button></div>`;
+  $('#cc').onclick = () => { ls.s('chan', null); home() };
+  const load = async () => {
+    try {
+      const r = await fetch(API + '/api/channel?q=' + encodeURIComponent(c.h)), d = await r.json();
+      if (d.error) throw d.error;
+      $('#ti').textContent = d.title; $('#im').src = d.img; $('#er').textContent = '';
+      $('#st').innerHTML = [['Obunachi', d.hidden ? 'yashirin' : f(d.subs)], ["Ko'rishlar", f(d.views)], ['Videolar', f(d.videos)], ["Video boshiga ko'rish", d.videos ? f(Math.round(d.views / d.videos)) : '0']]
+        .map(x => `<div class="k"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('');
+      $('#up').textContent = 'Yangilandi: ' + new Date().toLocaleTimeString('ru-RU') + ' · har 3 daqiqada';
+    } catch (e) { $('#er').textContent = typeof e === 'string' ? e : "Ulanib bo'lmadi, birozdan keyin qayta uriniladi"; }
+  };
+  load(); let n = 0;
+  timer = setInterval(() => { if (++n % 6 === 0) load() }, 3e4);
+}
+async function admin() {
+  const t = sessionStorage.getItem('adm') || prompt('Admin tokenini kiriting');
+  if (!t) return;
+  const H = { 'x-admin': t, 'content-type': 'application/json' };
+  let r; try { r = await fetch(API + '/api/admin/stats', { headers: H }) } catch (e) { alert('Serverga ulanib bolmadi'); return }
+  if (!r.ok) { sessionStorage.removeItem('adm'); alert("Sizda admin huquqi yo'q"); return }
+  sessionStorage.setItem('adm', t);
+  const s = await r.json();
+  $('#m').innerHTML = `<div class="c"><b>🔧 Admin panel</b><div class="g"><div class="k"><small>Kirgan odamlar</small><b>${f(s.vu)}</b></div><div class="k"><small>Jami kirishlar</small><b>${f(s.vt)}</b></div></div></div><div class="c"><b>🔑 YouTube API kaliti</b><div class="mu">${s.hasKey ? "Kalit o'rnatilgan ✔ (qayta ko'rsatilmaydi)" : "Kalit hali kiritilmagan"}</div><input id="ak" type="password" placeholder="Yangi API kalitni kiriting" autocomplete="off"><button class="b" id="sk">Saqlash</button><div id="am" class="mu"></div></div><button class="b s" id="bk">← Orqaga</button>`;
+  $('#sk').onclick = async () => {
+    const x = await fetch(API + '/api/admin/key', { method: 'POST', headers: H, body: JSON.stringify({ key: $('#ak').value.trim() }) }), d = await x.json();
+    $('#am').textContent = x.ok ? 'Saqlandi ✔' : d.error; if (x.ok) $('#ak').value = '';
+  };
+  $('#bk').onclick = home;
+}
+$('#code').oninput = e => { if (e.target.value !== 'Admin2014') return; e.target.value = ''; admin() };
+try {
+  if (!sessionStorage.getItem('v')) {
+    let id = ls.g('vid');
+    if (!id) { id = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => (b % 36).toString(36)).join(''); ls.s('vid', id) }
+    fetch(API + '/api/visit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+    sessionStorage.setItem('v', 1);
+  }
+} catch (e) {}
+home();
+</script></body></html>
+<!DOCTYPE html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TubeBoost — YouTube statistika</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#14161c;--mu:#6b7280;--ac:#e11d48;--bd:#e5e7eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d24;--tx:#f1f2f5;--mu:#9aa1ad;--bd:#2a2e38}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--tx);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:radial-gradient(900px 520px at 8% -8%,rgba(225,29,72,.30),transparent 60%),radial-gradient(800px 520px at 100% 8%,rgba(99,102,241,.30),transparent 60%),radial-gradient(700px 600px at 50% 112%,rgba(14,165,233,.24),transparent 60%),var(--bg);background-attachment:fixed}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px}
+h1{font-size:20px;margin:0}h1 span{color:var(--ac)}
+#code{width:110px;padding:7px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font-size:13px}
+main{max-width:720px;margin:0 auto;padding:6px 14px 40px}
+.c{background:color-mix(in srgb,var(--card) 80%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 6px 24px rgba(0,0,0,.08)}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.k{background:var(--bg);border-radius:10px;padding:10px}.k b{display:block;font-size:20px}.k small{color:var(--mu)}
+input{width:100%;padding:10px;margin-top:8px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+.b{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;margin-top:10px;width:100%}
+.b.s{background:var(--bg);color:var(--tx);border:1px solid var(--bd);width:auto;padding:7px 11px;font-size:13px;margin:0}
+.b:disabled{opacity:.5}
+.mu{color:var(--mu);font-size:13px}.er{color:var(--ac);margin-top:8px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ch{display:flex;gap:12px;align-items:center}
+.av{width:68px;height:68px;border-radius:50%;overflow:hidden;flex:none;background:linear-gradient(135deg,var(--ac),#6366f1)}.av img{width:100%;height:100%;object-fit:cover}
+</style></head><body>
+<header><h1>Tube<span>Boost</span></h1><input id="code" placeholder="Kirish kodi" autocomplete="off"></header>
+<main id="m"></main>
+<script>
+// 1) Cloudflare Worker manzilingizni shu yerga yozing:
+const API = "https://SIZNING-WORKER.workers.dev";
+
+const $ = s => document.querySelector(s), f = n => Number(n).toLocaleString('ru-RU');
+const ls = {
+  g: k => { try { return JSON.parse(localStorage.getItem(k)) } catch (e) { return null } },
+  s: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} }
+};
+function parse(u) {
+  u = (u || '').trim();
+  if (!(u.includes('youtube.com/') || u[0] === '@')) return null;
+  const i = u.indexOf('youtube.com/'), p = i >= 0 ? u.slice(i + 12) : u;
+  const a = p.split('?')[0].split('#')[0].split('/').filter(Boolean);
+  if (!a.length) return null;
+  let h = null;
+  if (a[0][0] === '@') h = a[0];
+  else if (['channel', 'user'].includes(a[0]) && a[1]) h = a[0] + '/' + a[1];
+  return h && /^[A-Za-z0-9_.@/-]+$/.test(h) ? h : null;
+}
+let timer;
+function home() {
+  clearInterval(timer);
+  const c = ls.g('chan');
+  if (!c) {
+    $('#m').innerHTML = `<div class="c"><b>📺 Kanalingizni ulang</b><div class="mu">YouTube kanal havolasini kiriting (youtube.com/@nom yoki /channel/... ). Kanalni istalgan vaqt almashtirish mumkin.</div><input id="cu" placeholder="https://youtube.com/@kanalnomi"><button class="b" id="cs">Statistikani ko'rsatish</button><div id="ce" class="er"></div></div>`;
+    $('#cs').onclick = () => {
+      const h = parse($('#cu').value);
+      if (!h) { $('#ce').textContent = "Havola noto'g'ri. Masalan: https://youtube.com/@kanalnomi"; return }
+      ls.s('chan', { h, ts: Date.now() }); home();
+    };
+    return;
+  }
+  $('#m').innerHTML = `<div class="c"><div class="ch"><div class="av"><img id="im" alt=""></div><div style="flex:1"><b id="ti" style="font-size:18px">...</b><div class="mu" id="up"></div></div></div><div class="g" id="st"></div><div id="er" class="er"></div></div><div class="c row"><span class="mu">Boshqa kanalni ko'rish uchun almashtiring</span><button class="b s" id="cc">Kanalni almashtirish</button></div>`;
+  $('#cc').onclick = () => { ls.s('chan', null); home() };
+  const load = async () => {
+    try {
+      const r = await fetch(API + '/api/channel?q=' + encodeURIComponent(c.h)), d = await r.json();
+      if (d.error) throw d.error;
+      $('#ti').textContent = d.title; $('#im').src = d.img; $('#er').textContent = '';
+      $('#st').innerHTML = [['Obunachi', d.hidden ? 'yashirin' : f(d.subs)], ["Ko'rishlar", f(d.views)], ['Videolar', f(d.videos)], ["Video boshiga ko'rish", d.videos ? f(Math.round(d.views / d.videos)) : '0']]
+        .map(x => `<div class="k"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('');
+      $('#up').textContent = 'Yangilandi: ' + new Date().toLocaleTimeString('ru-RU') + ' · har 3 daqiqada';
+    } catch (e) { $('#er').textContent = typeof e === 'string' ? e : "Ulanib bo'lmadi, birozdan keyin qayta uriniladi"; }
+  };
+  load(); let n = 0;
+  timer = setInterval(() => { if (++n % 6 === 0) load() }, 3e4);
+}
+async function admin() {
+  const t = sessionStorage.getItem('adm') || prompt('Admin tokenini kiriting');
+  if (!t) return;
+  const H = { 'x-admin': t, 'content-type': 'application/json' };
+  let r; try { r = await fetch(API + '/api/admin/stats', { headers: H }) } catch (e) { alert('Serverga ulanib bolmadi'); return }
+  if (!r.ok) { sessionStorage.removeItem('adm'); alert("Sizda admin huquqi yo'q"); return }
+  sessionStorage.setItem('adm', t);
+  const s = await r.json();
+  $('#m').innerHTML = `<div class="c"><b>🔧 Admin panel</b><div class="g"><div class="k"><small>Kirgan odamlar</small><b>${f(s.vu)}</b></div><div class="k"><small>Jami kirishlar</small><b>${f(s.vt)}</b></div></div></div><div class="c"><b>🔑 YouTube API kaliti</b><div class="mu">${s.hasKey ? "Kalit o'rnatilgan ✔ (qayta ko'rsatilmaydi)" : "Kalit hali kiritilmagan"}</div><input id="ak" type="password" placeholder="Yangi API kalitni kiriting" autocomplete="off"><button class="b" id="sk">Saqlash</button><div id="am" class="mu"></div></div><button class="b s" id="bk">← Orqaga</button>`;
+  $('#sk').onclick = async () => {
+    const x = await fetch(API + '/api/admin/key', { method: 'POST', headers: H, body: JSON.stringify({ key: $('#ak').value.trim() }) }), d = await x.json();
+    $('#am').textContent = x.ok ? 'Saqlandi ✔' : d.error; if (x.ok) $('#ak').value = '';
+  };
+  $('#bk').onclick = home;
+}
+$('#code').oninput = e => { if (e.target.value !== 'Admin2014') return; e.target.value = ''; admin() };
+try {
+  if (!sessionStorage.getItem('v')) {
+    let id = ls.g('vid');
+    if (!id) { id = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => (b % 36).toString(36)).join(''); ls.s('vid', id) }
+    fetch(API + '/api/visit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+    sessionStorage.setItem('v', 1);
+  }
+} catch (e) {}
+home();
+</script></body></html>
